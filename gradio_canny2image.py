@@ -13,12 +13,46 @@ from annotator.util import resize_image, HWC3
 from annotator.canny import CannyDetector
 from cldm.model import create_model, load_state_dict
 from cldm.ddim_hacked import DDIMSampler
+from PIL import Image, ImageDraw
+
+def extract_inscribed_circle(image):
+
+    # 获取图片尺寸
+    height, width, _ = image.shape
+    
+    # 确保图片是正方形
+    if width != height:
+        raise ValueError("The input image must be a square.")
+    
+    # 获取图片尺寸
+    height, width, _ = image.shape
+    
+    # 确保图片是正方形
+    if width != height:
+        raise ValueError("The input image must be a square.")
+    
+    # 创建一个新的空白图像，背景为黑色
+    mask = np.zeros((height, width), dtype=np.uint8)
+    
+    # 计算圆的半径和中心点
+    radius = width // 2
+    center = (radius, radius)
+    
+    # 在新图像上画一个白色圆形掩码
+    cv2.circle(mask, center, radius, 255, -1)
+    
+    # 将原图与掩码应用
+    result_image = cv2.bitwise_and(image, image, mask=mask)
+    return result_image
+    # 保存结果图像
+    #cv2.imwrite(output_path, result_image)
 
 
-apply_canny = CannyDetector()
+
+#apply_canny = CannyDetector()
 
 model = create_model('./models/cldm_v15.yaml').cpu()
-model.load_state_dict(load_state_dict('./models/control_sd15_canny.pth', location='cuda'))
+model.load_state_dict(load_state_dict('./last.pth', location='cuda'))
 model = model.cuda()
 ddim_sampler = DDIMSampler(model)
 
@@ -26,10 +60,12 @@ ddim_sampler = DDIMSampler(model)
 def process(input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, ddim_steps, guess_mode, strength, scale, seed, eta, low_threshold, high_threshold):
     with torch.no_grad():
         img = resize_image(HWC3(input_image), image_resolution)
+        img = extract_inscribed_circle(img)
         H, W, C = img.shape
 
-        detected_map = apply_canny(img, low_threshold, high_threshold)
-        detected_map = HWC3(detected_map)
+        
+        #detected_map = apply_canny(img, low_threshold, high_threshold)
+        detected_map = HWC3(img)
 
         control = torch.from_numpy(detected_map.copy()).float().cuda() / 255.0
         control = torch.stack([control for _ in range(num_samples)], dim=0)
